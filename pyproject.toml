@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flumapper"
+version = "0.1.0"
+description = "An AI-based Molecular Analysis, Prediction and Profiling platform for influenza viruses"
+readme = "README.md"
+authors = [
+  { name = "Dipro Sinha" },
+]
+keywords = [
+  "avian influenza",
+  "bioinformatics",
+  "HA subtype",
+  "NA subtype",
+  "HPAI",
+  "LPAI",
+  "machine learning",
+  "viral genomics",
+]
+requires-python = ">=3.10"
+dependencies = [
+  "joblib>=1.4",
+  "numpy>=1.26",
+  "pandas>=2.0",
+  "scikit-learn>=1.5",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+[project.scripts]
+flumapper = "flumapper.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flumapper"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/flumapper",
+  "tests",
+  "build_resources.py",
+  "README.md",
+  "pyproject.toml",
+  "CITATION.cff",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

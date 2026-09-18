@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use FluMAPPER, please cite it as below."
+title: "FluMAPPER: An AI-based Molecular Analysis, Prediction and Profiling platform for influenza viruses"
+authors:
+  - family-names: Sinha
+    given-names: Dipro
+version: 0.1.0
+date-released: 2026-09-18
+license: MIT
+keywords:
+  - avian influenza
+  - bioinformatics
+  - machine learning
+  - HA subtype
+  - NA subtype
+  - HPAI
+  - LPAI
