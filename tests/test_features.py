@@ -1,6 +1,6 @@
 import numpy as np
 
-from flumapper.features import extract_features, fix_length, kmer_only_features
+from deepflupred.features import extract_features, fix_length, kmer_only_features
 
 
 def test_fix_length_pads_with_n():

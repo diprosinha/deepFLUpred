@@ -1,4 +1,4 @@
-from flumapper.cleavage_site import analyze_sequence
+from deepflupred.cleavage_site import analyze_sequence
 
 
 def test_no_motif_returns_none():

@@ -1,0 +1,10 @@
+{
+  "sha256": {
+    "pathogenicity_models/chicken/model.joblib": "0ac78b705834286a3bb319937d02d3911183c7613afa26dae00cc91bd0f47eed",
+    "pathogenicity_models/duck/model.joblib": "4716f74dc9c6209151d169201aa86e4460d1c5371b48caf2a38ea47fc52b5e8c",
+    "pathogenicity_models/human/model.joblib": "c0dd20245a0200c16fa96b2396301c2397273192f01a149a7acbb3fa372fe93a",
+    "segment_model/model.joblib": "2811d8dd0570d9f640f4f16d0042f47a68013b3e3bff41a25be882a808762c44",
+    "subtype_models/HA/model.joblib": "ac3c86bdd9d339abecc9043b08b479bf083e68732de4c8d97cab51f32a7fff58",
+    "subtype_models/NA/model.joblib": "71c1c7fcda95d6790c9c3a07b7f87602a36005b4a6088eb80b894f5dafd3211c"
+  }
+}

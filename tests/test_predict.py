@@ -1,7 +1,7 @@
 import random
 
-from flumapper.model_store import ModelStore
-from flumapper.predict import predict_sequence, predict_sequences
+from deepflupred.model_store import ModelStore
+from deepflupred.predict import predict_sequence, predict_sequences
 
 
 def _random_seq(n, seed):

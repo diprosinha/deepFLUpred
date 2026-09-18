@@ -2,7 +2,7 @@
 """
 One-time build script: trains the HA-vs-NA segment classifier and bundles it,
 plus the already-trained subtype and pathogenicity RandomForest models, into
-self-contained joblib bundles under src/flumapper/resources/models/.
+self-contained joblib bundles under src/deepflupred/resources/models/.
 
 Not part of the installed package -- run once (or whenever the upstream
 gisaid_data models are retrained) to (re)populate resources/models/.
@@ -20,10 +20,10 @@ from sklearn.metrics import accuracy_score, matthews_corrcoef
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
-from flumapper.features import extract_features, feature_names, kmer_only_features  # noqa: E402
+from deepflupred.features import extract_features, feature_names, kmer_only_features  # noqa: E402
 
-GISAID_ROOT = os.path.dirname(HERE)  # FluMAPPER now lives inside gisaid_data/
-RESOURCES = os.path.join(HERE, "src", "flumapper", "resources", "models")
+GISAID_ROOT = os.path.dirname(HERE)  # deepFLUpred now lives inside gisaid_data/
+RESOURCES = os.path.join(HERE, "src", "deepflupred", "resources", "models")
 SEED = 42
 
 

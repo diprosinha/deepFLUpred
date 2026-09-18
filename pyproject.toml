@@ -3,12 +3,15 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "flumapper"
+name = "deepflupred"
 version = "0.1.0"
-description = "An AI-based Molecular Analysis, Prediction and Profiling platform for influenza viruses"
+description = "A deep learning-based framework for genomic characterization, subtyping, and pathogenicity prediction of avian influenza viruses"
 readme = "README.md"
 authors = [
   { name = "Dipro Sinha" },
+  { name = "Naveen Duhan" },
+  { name = "Jagathiswaran Radhakrisnan" },
+  { name = "Sunil Mor" },
 ]
 keywords = [
   "avian influenza",
@@ -38,7 +41,7 @@ classifiers = [
 ]
 
 [project.scripts]
-flumapper = "flumapper.cli:main"
+deepflupred = "deepflupred.cli:main"
 
 [dependency-groups]
 dev = [
@@ -46,11 +49,11 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/flumapper"]
+packages = ["src/deepflupred"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "src/flumapper",
+  "src/deepflupred",
   "tests",
   "build_resources.py",
   "README.md",

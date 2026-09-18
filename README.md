@@ -1,10 +1,10 @@
-# FluMAPPER
+# deepFLUpred
 
-**An AI-based Molecular Analysis, Prediction and Profiling platform for influenza viruses**
+**A Deep Learning-Based Framework for Genomic Characterization, Subtyping, and Pathogenicity Prediction of Avian Influenza Viruses**
 
-Author: Dipro Sinha
+Authors: Dipro Sinha, Naveen Duhan, Jagathiswaran Radhakrisnan, Sunil Mor
 
-FluMAPPER classifies avian influenza nucleotide sequences with machine
+deepFLUpred classifies avian influenza nucleotide sequences with machine
 learning, in three gated stages:
 
 1. **Segment identification** — is the sequence HA, NA, or neither?
@@ -21,13 +21,19 @@ classified as HA. Prediction is alignment-free (canonical nucleotide
 chemical-property and di/trinucleotide k-mer features) and does not run BLAST
 or pairwise identity/alignment.
 
+> **Note**: the segment, subtype, and pathogenicity models currently bundled
+> with the package are RandomForest classifiers (see `build_resources.py`).
+> DNABERT-embedding and BiLSTM models were developed and compared separately
+> (see `../new_analysis`) but are not yet wired into this package's
+> prediction pipeline.
+
 ## Installation
 
-FluMAPPER requires Python 3.10 or newer.
+deepFLUpred requires Python 3.10 or newer.
 
 ```bash
 git clone <this-repository>
-cd FluMAPPER
+cd deepFLUpred
 python -m pip install .
 ```
 
@@ -36,21 +42,21 @@ python -m pip install .
 Classify one or more nucleotide sequences in a FASTA file:
 
 ```bash
-flumapper predict query.fasta --output predictions.csv
+deepflupred predict query.fasta --output predictions.csv
 ```
 
 If the expected segment is known, provide it as an additional check (a
 different assignment is flagged, not rejected):
 
 ```bash
-flumapper predict query.fasta --expected-segment HA --output predictions.csv
+deepflupred predict query.fasta --expected-segment HA --output predictions.csv
 ```
 
 Restrict HPAI/LPAI prediction to a specific host's model instead of the
 default three-host consensus:
 
 ```bash
-flumapper predict query.fasta --pathogenicity-host chicken --output predictions.csv
+deepflupred predict query.fasta --pathogenicity-host chicken --output predictions.csv
 ```
 
 The output CSV has one row per sequence with the segment call and confidence,
@@ -70,8 +76,8 @@ consensus.
   classified.
 - **Segment unresolved** — neither HA nor NA was identified with sufficient
   confidence (below 75%) or a plausible sequence length. This is a coarse,
-  two-class (HA-vs-NA) gate: FluMAPPER's current models were trained only on
-  HA and NA reference data, so it cannot yet positively confirm a third
+  two-class (HA-vs-NA) gate: deepFLUpred's current models were trained only
+  on HA and NA reference data, so it cannot yet positively confirm a third
   influenza segment (PB1/PB2/PA/NP/M/NS) — it can only report that a query
   does not look confidently like HA or NA.
 - **Expected segment mismatch** — the assigned segment differs from
@@ -84,7 +90,7 @@ consensus.
 ## Python API
 
 ```python
-from flumapper import predict_fasta, predict_sequences
+from deepflupred import predict_fasta, predict_sequences
 
 table = predict_fasta("query.fasta", output="predictions.csv", expected_segment="HA")
 
@@ -93,24 +99,23 @@ table = predict_sequences(["ACGT..."], identifiers=["query-1"])
 
 ## Models
 
-FluMAPPER bundles:
+deepFLUpred bundles:
 
 - one HA-vs-NA segment classifier (RandomForest, canonical dinucleotide +
   trinucleotide frequency features — alignment-free and length-invariant)
 - two subtype classifiers (HA: H1-H16, NA: N1-N9), each a RandomForest
   trained on CD-HIT-deduplicated, cluster-disjoint 99%-identity GISAID data
-  (see the model-development pipeline in `../gisaid_data/HA_gene` and
-  `../gisaid_data/NA_gene`)
+  (see the model-development pipeline in `../HA_gene` and `../NA_gene`)
 - three pathogenicity classifiers (HPAI vs LPAI), one per host
   (chicken/duck/human), each a RandomForest trained on 110nt HA1/HA2
-  cleavage-site windows (see `../gisaid_data/hpli_lpai`)
+  cleavage-site windows (see `../hpli_lpai`)
 
 List the bundled models and their held-out test performance, or verify the
 bundled model files against the packaged checksum manifest:
 
 ```bash
-flumapper models
-flumapper models --verify
+deepflupred models
+deepflupred models --verify
 ```
 
 Only load replacement `.joblib` models from a trusted source. Python model
