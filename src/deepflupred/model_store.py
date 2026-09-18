@@ -1,4 +1,4 @@
-"""Load bundled or user-supplied deepFLUpred model bundles."""
+"""Load bundled or user-supplied deepFLUpred DNABERT+BiLSTM model bundles."""
 from __future__ import annotations
 
 import hashlib
@@ -6,13 +6,16 @@ import json
 from importlib.resources import files
 from pathlib import Path
 
-import joblib
+import torch
 
 from deepflupred.constants import PATHOGENICITY_HOSTS, SEGMENTS
+from deepflupred.dnabert_bilstm import BiLSTMOnEmbeddings, LSTM_HIDDEN, N_WINDOWS, get_device, load_encoder
 
 
 class ModelStore:
-    """Model repository supporting bundled resources and filesystem overrides."""
+    """Model repository supporting bundled resources and filesystem overrides.
+    Also owns the single shared frozen DNABERT-2 encoder (expensive to load,
+    so it's created lazily and cached for the lifetime of the ModelStore)."""
 
     def __init__(
         self,
@@ -28,26 +31,49 @@ class ModelStore:
         self._segment_cache: dict | None = None
         self._subtype_cache: dict[str, dict] = {}
         self._pathogenicity_cache: dict[str, dict] = {}
+        self._encoder_cache: tuple | None = None
+        self.device = get_device()
 
-    @staticmethod
-    def _load_resource(resource) -> dict:
-        with resource.open("rb") as handle:
-            return joblib.load(handle)
+    @property
+    def encoder(self):
+        """(tokenizer, frozen DNABERT-2 model) pair, loaded once and reused
+        across every prediction stage."""
+        if self._encoder_cache is None:
+            self._encoder_cache = load_encoder(self.device)
+        return self._encoder_cache
 
-    @staticmethod
-    def _load_path(path: Path) -> dict:
-        if not path.is_file():
-            raise FileNotFoundError(f"Model file not found: {path}")
-        return joblib.load(path)
+    def _load_bundle_dir(self, dir_path: Path) -> dict:
+        state_dict = torch.load(dir_path / "model.pt", map_location="cpu")
+        classes = json.loads((dir_path / "classes.json").read_text())
+        metrics_path = dir_path / "metrics.json"
+        metrics = json.loads(metrics_path.read_text()) if metrics_path.exists() else None
+        in_dim = state_dict["lstm.weight_ih_l0"].shape[1]
+        model = BiLSTMOnEmbeddings(in_dim, LSTM_HIDDEN, len(classes))
+        model.load_state_dict(state_dict)
+        model.to(self.device).eval()
+        return {"model": model, "classes": classes, "metrics": metrics}
+
+    def _load_bundle_resource(self, resource_dir) -> dict:
+        state_dict = torch.load(
+            (resource_dir / "model.pt").open("rb"), map_location="cpu", weights_only=True
+        )
+        classes = json.loads((resource_dir / "classes.json").read_text())
+        metrics_resource = resource_dir / "metrics.json"
+        metrics = json.loads(metrics_resource.read_text()) if metrics_resource.is_file() else None
+        in_dim = state_dict["lstm.weight_ih_l0"].shape[1]
+        model = BiLSTMOnEmbeddings(in_dim, LSTM_HIDDEN, len(classes))
+        model.load_state_dict(state_dict)
+        model.to(self.device).eval()
+        return {"model": model, "classes": classes, "metrics": metrics}
 
     def load_segment_model(self) -> dict:
         if self._segment_cache is not None:
             return self._segment_cache
         if self.segment_model:
-            self._segment_cache = self._load_path(self.segment_model)
+            self._segment_cache = self._load_bundle_dir(self.segment_model)
         else:
-            resource = files("deepflupred") / "resources/models/segment_model/model.joblib"
-            self._segment_cache = self._load_resource(resource)
+            resource = files("deepflupred") / "resources/models/segment_model"
+            self._segment_cache = self._load_bundle_resource(resource)
         return self._segment_cache
 
     def load_subtype(self, segment: str) -> dict:
@@ -57,10 +83,10 @@ class ModelStore:
         if segment in self._subtype_cache:
             return self._subtype_cache[segment]
         if self.subtype_model_dir:
-            bundle = self._load_path(self.subtype_model_dir / segment / "model.joblib")
+            bundle = self._load_bundle_dir(self.subtype_model_dir / segment)
         else:
-            resource = files("deepflupred") / f"resources/models/subtype_models/{segment}/model.joblib"
-            bundle = self._load_resource(resource)
+            resource = files("deepflupred") / f"resources/models/subtype_models/{segment}"
+            bundle = self._load_bundle_resource(resource)
         self._subtype_cache[segment] = bundle
         return bundle
 
@@ -71,10 +97,10 @@ class ModelStore:
         if host in self._pathogenicity_cache:
             return self._pathogenicity_cache[host]
         if self.pathogenicity_model_dir:
-            bundle = self._load_path(self.pathogenicity_model_dir / host / "model.joblib")
+            bundle = self._load_bundle_dir(self.pathogenicity_model_dir / host)
         else:
-            resource = files("deepflupred") / f"resources/models/pathogenicity_models/{host}/model.joblib"
-            bundle = self._load_resource(resource)
+            resource = files("deepflupred") / f"resources/models/pathogenicity_models/{host}"
+            bundle = self._load_bundle_resource(resource)
         self._pathogenicity_cache[host] = bundle
         return bundle
 
@@ -85,8 +111,7 @@ class ModelStore:
             "model": "segment_model",
             "task": "HA vs NA segment identification",
             "classes": seg.get("classes"),
-            "held_out_accuracy": seg.get("held_out_accuracy"),
-            "held_out_mcc": seg.get("held_out_mcc"),
+            "test_metrics": seg.get("metrics"),
         })
         for segment in SEGMENTS:
             bundle = self.load_subtype(segment)
@@ -94,15 +119,15 @@ class ModelStore:
                 "model": f"subtype_models/{segment}",
                 "task": f"{segment} subtype classification",
                 "classes": bundle.get("classes"),
-                "held_out_test_metrics": bundle.get("held_out_test_metrics"),
+                "test_metrics": bundle.get("metrics"),
             })
         for host in PATHOGENICITY_HOSTS:
             bundle = self.load_pathogenicity(host)
             rows.append({
                 "model": f"pathogenicity_models/{host}",
                 "task": f"HPAI/LPAI classification ({host} cleavage-site window)",
-                "classes": ["LPAI", "HPAI"],
-                "held_out_test_metrics": bundle.get("held_out_test_metrics"),
+                "classes": bundle.get("classes"),
+                "test_metrics": bundle.get("metrics"),
             })
         return rows
 

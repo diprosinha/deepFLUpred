@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         dest="pathogenicity_hosts",
         help="Restrict HPAI/LPAI prediction to this host's model "
-        "(repeatable; default: run all three and report a consensus)",
+        "(repeatable; default: run all supported hosts and report a consensus)",
     )
     predict.add_argument("--segment-model", type=Path, help="Alternative segment-ID model")
     predict.add_argument(
@@ -82,17 +82,10 @@ def main(argv: list[str] | None = None) -> None:
         else:
             for row in inventory:
                 print(f"{row['model']}\t{row['task']}")
-                if row.get("held_out_test_metrics"):
-                    m = row["held_out_test_metrics"]
-                    print(
-                        f"  accuracy={m.get('accuracy', float('nan')):.4f}  "
-                        f"mcc={m.get('mcc', float('nan')):.4f}"
-                    )
-                elif row.get("held_out_accuracy") is not None:
-                    print(
-                        f"  accuracy={row['held_out_accuracy']:.4f}  "
-                        f"mcc={row['held_out_mcc']:.4f}"
-                    )
+                m = row.get("test_metrics")
+                if m:
+                    parts = [f"{k}={v:.4f}" for k, v in m.items()]
+                    print("  " + "  ".join(parts))
         return
 
     table = predict_fasta(

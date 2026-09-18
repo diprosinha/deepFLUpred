@@ -6,7 +6,14 @@ Three stages, run in order, each gating the next:
   2. predict_subtype    -- if HA/NA: which subtype (H1-H16 / N1-N9)?
   3. predict_pathogenicity -- if HA: HPAI or LPAI, from the HA1/HA2
      cleavage site (both a biological rule -- polybasic/monobasic motif --
-     and a per-host machine-learning model, reported together)
+     and a per-host DNABERT+BiLSTM model, reported together)
+
+Every stage runs on DNABERT-2 embeddings (frozen encoder, adaptive-pooled to
+a fixed 16-step sequence) classified by a trained BiLSTM head -- see
+dnabert_bilstm.py. The segment and subtype stages both encode the full
+input sequence with an identical recipe, so that embedding is computed once
+per sequence and reused for both, rather than re-running the transformer
+twice.
 """
 from __future__ import annotations
 
@@ -21,9 +28,8 @@ from deepflupred.constants import (
     HA_LENGTH_RANGE,
     NA_LENGTH_RANGE,
     PATHOGENICITY_HOSTS,
-    PATHOGENICITY_LABEL_MAP,
 )
-from deepflupred.features import extract_features, kmer_only_features
+from deepflupred.dnabert_bilstm import pooled_embed_sequences, predict_proba
 from deepflupred.model_store import ModelStore
 
 SEGMENT_CONFIDENCE_THRESHOLD = 0.75
@@ -53,17 +59,21 @@ def _sequence_id(header: str) -> str:
     return header.split("|", 1)[0].strip() or header
 
 
-def identify_segment(seq: str, store: ModelStore) -> dict:
-    bundle = store.load_segment_model()
-    model = bundle["model"]
-    classes = list(model.classes_)
+def embed_one(seq: str, store: ModelStore) -> np.ndarray:
+    """DNABERT tokenizer -> DNABERT Transformer -> hidden states -> adaptive
+    pooling -> a single (16, 768) numerical feature-vector sequence."""
+    tok, model = store.encoder
+    return pooled_embed_sequences([seq], tok, model, store.device)[0]
 
-    X = kmer_only_features(seq).reshape(1, -1)
-    proba = model.predict_proba(X)[0]
+
+def identify_segment(embedding: np.ndarray, seq_len: int, store: ModelStore) -> dict:
+    bundle = store.load_segment_model()
+    classes = bundle["classes"]
+
+    proba = predict_proba(bundle["model"], embedding, store.device)
     top_idx = int(np.argmax(proba))
     top_class, confidence = classes[top_idx], float(proba[top_idx])
 
-    seq_len = len(seq.strip())
     length_ok = (
         (HA_LENGTH_RANGE[0] <= seq_len <= HA_LENGTH_RANGE[1])
         if top_class == "HA"
@@ -79,15 +89,11 @@ def identify_segment(seq: str, store: ModelStore) -> dict:
     }
 
 
-def predict_subtype(seq: str, segment: str, store: ModelStore) -> dict:
+def predict_subtype(embedding: np.ndarray, segment: str, store: ModelStore) -> dict:
     bundle = store.load_subtype(segment)
-    model = bundle["model"]
-    target_len = bundle["target_len"]
-    mask = bundle["selected_features_mask"]
-    classes = list(model.classes_)
+    classes = bundle["classes"]
 
-    X = extract_features(seq, target_len)[mask].reshape(1, -1)
-    proba = model.predict_proba(X)[0]
+    proba = predict_proba(bundle["model"], embedding, store.device)
     top_idx = int(np.argmax(proba))
     top_class, confidence = classes[top_idx], float(proba[top_idx])
 
@@ -102,8 +108,8 @@ def predict_subtype(seq: str, segment: str, store: ModelStore) -> dict:
 def predict_pathogenicity(seq: str, store: ModelStore, hosts: list[str] | None = None) -> dict:
     """Runs on a full-length HA nucleotide sequence: locates the HA1/HA2
     cleavage site, reports the rule-based Polybasic/Monobasic call, and
-    (when the 110nt ML window is fully covered by the input) the
-    per-host RandomForest HPAI/LPAI prediction."""
+    (when the 110nt ML window is fully covered by the input) the per-host
+    DNABERT+BiLSTM HPAI/LPAI prediction."""
     hosts = hosts or list(PATHOGENICITY_HOSTS)
     site = analyze_sequence(seq)
 
@@ -126,24 +132,20 @@ def predict_pathogenicity(seq: str, store: ModelStore, hosts: list[str] | None =
     if window is None:
         return result
 
+    window_embedding = embed_one(window, store)
+
     calls = []
     for host in hosts:
         bundle = store.load_pathogenicity(host)
-        model = bundle["model"]
-        target_len = bundle["target_len"]
-        mask = bundle["selected_features_mask"]
-        X = extract_features(window, target_len)[mask].reshape(1, -1)
-        proba = model.predict_proba(X)[0]
-        model_classes = list(model.classes_)  # integer labels, see PATHOGENICITY_LABEL_MAP
+        classes = bundle["classes"]
+        proba = predict_proba(bundle["model"], window_embedding, store.device)
         top_idx = int(np.argmax(proba))
-        top_label = PATHOGENICITY_LABEL_MAP[model_classes[top_idx]]
+        top_label = classes[top_idx]
         confidence = float(proba[top_idx])
         result["pathogenicity_ml"][host] = {
             "prediction": top_label,
             "confidence": confidence,
-            "probabilities": {
-                PATHOGENICITY_LABEL_MAP[c]: float(p) for c, p in zip(model_classes, proba)
-            },
+            "probabilities": dict(zip(classes, (float(p) for p in proba))),
         }
         calls.append(top_label)
 
@@ -163,7 +165,9 @@ def predict_sequence(
     seq = seq.strip()
     row: dict = {"sequence_id": identifier, "sequence_length": len(seq)}
 
-    seg = identify_segment(seq, store)
+    embedding = embed_one(seq, store)
+
+    seg = identify_segment(embedding, len(seq), store)
     row["segment"] = seg["segment"]
     row["segment_confidence"] = round(seg["segment_confidence"], 4)
 
@@ -183,7 +187,7 @@ def predict_sequence(
             f"(confidence={seg['segment_confidence']:.3f})."
         )
 
-    subtype = predict_subtype(seq, seg["segment"], store)
+    subtype = predict_subtype(embedding, seg["segment"], store)
     row["subtype"] = subtype["subtype"]
     row["subtype_confidence"] = round(subtype["subtype_confidence"], 4)
 

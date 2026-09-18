@@ -20,15 +20,18 @@ keywords = [
   "NA subtype",
   "HPAI",
   "LPAI",
-  "machine learning",
+  "deep learning",
+  "DNABERT",
+  "BiLSTM",
   "viral genomics",
 ]
 requires-python = ">=3.10"
 dependencies = [
-  "joblib>=1.4",
   "numpy>=1.26",
   "pandas>=2.0",
-  "scikit-learn>=1.5",
+  "torch>=2.5",
+  "transformers==4.29.2",
+  "einops",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",

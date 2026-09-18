@@ -1,10 +1,20 @@
 {
+  "segment_model_held_out_accuracy": 1.0,
   "sha256": {
-    "pathogenicity_models/chicken/model.joblib": "0ac78b705834286a3bb319937d02d3911183c7613afa26dae00cc91bd0f47eed",
-    "pathogenicity_models/duck/model.joblib": "4716f74dc9c6209151d169201aa86e4460d1c5371b48caf2a38ea47fc52b5e8c",
-    "pathogenicity_models/human/model.joblib": "c0dd20245a0200c16fa96b2396301c2397273192f01a149a7acbb3fa372fe93a",
-    "segment_model/model.joblib": "2811d8dd0570d9f640f4f16d0042f47a68013b3e3bff41a25be882a808762c44",
-    "subtype_models/HA/model.joblib": "ac3c86bdd9d339abecc9043b08b479bf083e68732de4c8d97cab51f32a7fff58",
-    "subtype_models/NA/model.joblib": "71c1c7fcda95d6790c9c3a07b7f87602a36005b4a6088eb80b894f5dafd3211c"
+    "pathogenicity_models/chicken/classes.json": "678dbea27e0fd8c0b3c5b97621db8dc4010d2b1849dddcbb4ccb819afa53d11d",
+    "pathogenicity_models/chicken/metrics.json": "df84d593f7907afee1590b1bb6da986d27e25a34825133ca486fad30dd2f8f30",
+    "pathogenicity_models/chicken/model.pt": "f8529e47698ec087967295651c5811929e8fac4720f0292fda1452ed9127967b",
+    "pathogenicity_models/duck/classes.json": "678dbea27e0fd8c0b3c5b97621db8dc4010d2b1849dddcbb4ccb819afa53d11d",
+    "pathogenicity_models/duck/metrics.json": "db95d2d6953f96427da633ab743fe2c138d2a763fbb019a8c6d7f9adf6faa81c",
+    "pathogenicity_models/duck/model.pt": "6302c14956714ba278ed1e5b83509e36029b52cab3d84f85a3161320a1ce8ba7",
+    "segment_model/classes.json": "d5387a4ffec29071fdfbf4ddac316883a182463e256ac573d7d0a9ac8afe4961",
+    "segment_model/metrics.json": "be2376c967aa92b99cef8b3ad9e0aa1b9f30abe7ea27fad7960cd3a8c315eaac",
+    "segment_model/model.pt": "c8a0564488d70cd1d6be06bc5879086fb19d07cf589d477e2fdc1a6a21953522",
+    "subtype_models/HA/classes.json": "b264ec1318aeea7a6810ce7a1a7110d371a74a5c36310fe135c42018e1e69fbe",
+    "subtype_models/HA/metrics.json": "9552d542b1b4f117ba942905681c00681598714d345e2fa7345d75038c170499",
+    "subtype_models/HA/model.pt": "e8ed04daa1f5077b1ed69aae773cf9e17ad013e5a73e0192aa0cc18792cfd2d7",
+    "subtype_models/NA/classes.json": "b6fa3ba0f11f16b708f2a875da05c0175ce6c90e3fa7f88e8540099b445a7d87",
+    "subtype_models/NA/metrics.json": "37339e00632b5d2b0abb76226c9b2e98fb19855749d9b2f7f658921b9a8ad9cd",
+    "subtype_models/NA/model.pt": "7a836c971c59edbf1cfb3e58ccb42eaa90887df8e8cb453d7a7f5d6752b1a86d"
   }
 }
