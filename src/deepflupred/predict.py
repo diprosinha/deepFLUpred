@@ -197,9 +197,6 @@ def predict_sequence(
         row["cleavage_site_classification"] = path["cleavage_site_classification"]
         row["cleavage_site_motif"] = path["cleavage_site_motif"]
         row["pathogenicity_consensus"] = path["pathogenicity_consensus"]
-        for host, call in path["pathogenicity_ml"].items():
-            row[f"pathogenicity_{host}"] = call["prediction"]
-            row[f"pathogenicity_{host}_confidence"] = round(call["confidence"], 4)
 
     if "status" not in row:
         row["status"] = "subtype_assigned"

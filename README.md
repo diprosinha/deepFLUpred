@@ -73,8 +73,8 @@ deepflupred predict query.fasta --pathogenicity-host chicken --output prediction
 
 The output CSV has one row per sequence with the segment call and confidence,
 the subtype call and confidence, and — for HA sequences — the cleavage-site
-classification/motif and each host's HPAI/LPAI call plus a majority-vote
-consensus.
+classification/motif and the majority-vote HPAI/LPAI consensus across host
+models.
 
 > **Note on reading the CSV with pandas**: the `segment` column's value for
 > a neuraminidase call is the literal string `"NA"`, which pandas'
