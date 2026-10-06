@@ -10,8 +10,8 @@ authors:
     given-names: Jagathiswaran
   - family-names: Mor
     given-names: Sunil
-version: 0.1.0
-date-released: 2026-09-18
+version: 0.2.0
+date-released: 2026-10-05
 license: MIT
 keywords:
   - avian influenza
@@ -22,3 +22,7 @@ keywords:
   - NA subtype
   - HPAI
   - LPAI
+  - gene identification
+  - one-class classification
+  - DNABERT
+  - BiLSTM

@@ -1,0 +1,86 @@
+{
+  "phase": "phase1_avian_influenza_a_any_gene",
+  "task": "one-class novelty detection: does this belong to any gene of avian influenza A?",
+  "method": "autoencoder",
+  "architecture": "frozen DNABERT-2 pooled embeddings (16x768) -> one-class BiLSTM",
+  "trained_on": {
+    "split": "phase1_train_positives",
+    "sequences": 38018,
+    "segments": [
+      "PB2",
+      "PB1",
+      "PA",
+      "HA",
+      "NP",
+      "NA",
+      "MP",
+      "NS"
+    ],
+    "source": "GISAID EpiFlu avian IAV, 99%-identity cluster representatives"
+  },
+  "nominal_acceptance": 0.95,
+  "threshold": -0.0008228888997109606,
+  "rep_dim": 32,
+  "selection_rule": "max shuffled-control rejection subject to held-out acceptance floor",
+  "acceptance_per_segment": {
+    "PB2": {
+      "n": 611,
+      "accepted": 0.8903436988543372
+    },
+    "PB1": {
+      "n": 601,
+      "accepted": 0.930116472545757
+    },
+    "PA": {
+      "n": 559,
+      "accepted": 0.9212880143112702
+    },
+    "HA": {
+      "n": 800,
+      "accepted": 0.93625
+    },
+    "NP": {
+      "n": 538,
+      "accepted": 0.9851301115241635
+    },
+    "NA": {
+      "n": 726,
+      "accepted": 0.9655647382920111
+    },
+    "MP": {
+      "n": 394,
+      "accepted": 0.9974619289340102
+    },
+    "NS": {
+      "n": 466,
+      "accepted": 0.9978540772532188
+    }
+  },
+  "evaluation": {
+    "method": "autoencoder",
+    "heldout_positive_acceptance": 0.949094781682641,
+    "ndv_n": 383,
+    "ndv_rejected": 0.9634464751958225,
+    "ndv_auroc": 0.9710163303553305,
+    "ibv_n": 413,
+    "ibv_rejected": 0.9830508474576272,
+    "ibv_auroc": 0.9777848259572415,
+    "host_mrna_n": 1148,
+    "host_mrna_rejected": 0.9564459930313589,
+    "host_mrna_auroc": 0.9847014579228404,
+    "influenza_b_n": 59,
+    "influenza_b_rejected": 0.6440677966101696,
+    "influenza_b_auroc": 0.9115395028970597,
+    "shuffled_n": 800,
+    "shuffled_rejected": 0.5225,
+    "shuffled_auroc": 0.8920638977635784,
+    "internal_segments_ncbi_n": 1679,
+    "internal_segments_ncbi_accepted": 0.9761762954139369,
+    "iav_ha_na_nonavian_n": 157,
+    "iav_ha_na_nonavian_accepted": 0.8726114649681529
+  },
+  "caveats": [
+    "Rejection means 'unlike avian influenza A', not 'identified as something else'.",
+    "Phase 1 screens for influenza A genes, not for host: human-host IAV HA/NA is largely accepted, so passing means 'influenza A-like', not 'confirmed avian'."
+  ]
+}

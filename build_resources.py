@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """
-One-time build script: trains the HA-vs-NA segment BiLSTM (reusing already
-computed DNABERT embeddings, no re-encoding) and copies the already-trained
-HA/NA subtype and chicken/duck pathogenicity DNABERT+BiLSTM checkpoints from
-gisaid_data/new_analysis/ into self-contained bundles under
-src/deepflupred/resources/models/.
+One-time build script: copies the already-trained DNABERT+BiLSTM checkpoints
+from gisaid_data/new_analysis/ into self-contained bundles under
+src/deepflupred/resources/models/ --
 
-Not part of the installed package -- run once (or whenever the upstream
-gisaid_data/new_analysis models are retrained) to (re)populate
-resources/models/. Requires the `tf_metal` conda env (torch>=2.5,
-transformers==4.29.2) -- see README.md.
+  oneclass/      phase 1, the avian influenza A one-class screen
+                 (new_analysis/phase12/train_phase1.py)
+  gene_model/    phase 2, the eight-class gene classifier
+                 (new_analysis/phase12/train_phase2.py)
+  subtype_models/ phase 3, HA (H1-H16) and NA (N1-N9)
+  pathogenicity_models/ phase 4, chicken and duck HPAI/LPAI
+
+Every model is trained by its own script upstream; this only assembles the
+bundles and writes the SHA-256 manifest. Not part of the installed package --
+run once, or whenever an upstream model is retrained. Requires the `tf_metal`
+conda env (torch>=2.5, transformers==4.29.2) -- see README.md.
+
+Pre-0.2.0 resources (segment_model/, oneclass/stage0_*, oneclass/stage1_*) are
+removed if present: the eight-class gene model subsumes the HA-vs-NA segment
+classifier, and the single phase-1 screen replaces the two old gates.
 """
 import json
 import os
@@ -102,42 +111,38 @@ def dnabert_bilstm_test_metrics(summary_csv_path):
 
 
 # --------------------------------------------------------------------------
-# 1. Segment classifier: HA vs NA, trained fresh on cached DNABERT embeddings
-#    for the HA@99 / NA@99 representative sequences (no re-encoding needed).
+# 1. Phase 2 gene classifier: copy the eight-class bundle trained by
+#    ../new_analysis/phase12/train_phase2.py on the cluster-disjoint splits.
+#    That script owns the training; this only copies the finished bundle.
 # --------------------------------------------------------------------------
-def build_segment_classifier(device):
-    print("=== Building segment classifier (HA vs NA) from cached embeddings ===")
-    ha_cache = np.load(
-        os.path.join(NEW_ANALYSIS, "HA_gene/cdhit_dedup_99pct_h1_h16/dnabert_bilstm_pooled_embeddings_cache.npz"),
-        allow_pickle=True,
-    )
-    na_cache = np.load(
-        os.path.join(NEW_ANALYSIS, "NA_gene/cdhit_dedup_99pct_n1_n9/dnabert_bilstm_pooled_embeddings_cache.npz"),
-        allow_pickle=True,
-    )
-    X = np.concatenate([ha_cache["embeddings"], na_cache["embeddings"]], axis=0)
-    y = np.array(["HA"] * len(ha_cache["embeddings"]) + ["NA"] * len(na_cache["embeddings"]))
-    print(f"  HA embeddings: {len(ha_cache['embeddings'])}   NA embeddings: {len(na_cache['embeddings'])}")
+def copy_gene_bundle():
+    print("=== Copying phase-2 eight-class gene classifier ===")
+    import shutil
 
-    classes = sorted(set(y))
-    cls_to_idx = {c: i for i, c in enumerate(classes)}
-    y_idx = np.array([cls_to_idx[c] for c in y])
+    source_dir = os.path.join(NEW_ANALYSIS, "phase12", "models", "phase2")
+    out_dir = os.path.join(RESOURCES, "gene_model")
+    os.makedirs(out_dir, exist_ok=True)
 
-    rng = np.random.RandomState(SEED)
-    perm = rng.permutation(len(y_idx))
-    n_test = int(0.1 * len(y_idx))
-    test_idx, train_idx = perm[:n_test], perm[n_test:]
-
-    model = train_bilstm(X[train_idx], y_idx[train_idx], len(classes), device)
-    acc = eval_accuracy(model, X[test_idx], y_idx[test_idx], device)
-    print(f"  held-out test: accuracy={acc:.4f} (n={n_test})")
-
-    final_model = train_bilstm(X, y_idx, len(classes), device)
-    save_bundle(
-        final_model, classes, os.path.join(RESOURCES, "segment_model"),
-        metrics={"test_accuracy": float(acc)},
-    )
-    return {"held_out_accuracy": float(acc), "classes": classes}
+    missing = [
+        name for name in ("model.pt", "classes.json", "metrics.json")
+        if not os.path.exists(os.path.join(source_dir, name))
+    ]
+    if missing:
+        raise SystemExit(
+            f"Missing phase-2 artifacts in {os.path.relpath(source_dir, GISAID_ROOT)}: "
+            f"{missing}. Run new_analysis/phase12/train_phase2.py first."
+        )
+    for name in ("model.pt", "classes.json", "metrics.json"):
+        shutil.copy2(os.path.join(source_dir, name), os.path.join(out_dir, name))
+    with open(os.path.join(out_dir, "metrics.json")) as fh:
+        metrics = json.load(fh)
+    with open(os.path.join(out_dir, "classes.json")) as fh:
+        classes = json.load(fh)
+    print(f"  classes ({len(classes)}): {classes}")
+    print(f"  test accuracy={metrics.get('test_accuracy'):.4f}  "
+          f"macro-F1={metrics.get('test_macro_f1'):.4f}")
+    print(f"  wrote {out_dir}/model.pt + classes.json + metrics.json")
+    return {"classes": classes, "test_accuracy": metrics.get("test_accuracy")}
 
 
 # --------------------------------------------------------------------------
@@ -185,11 +190,66 @@ def copy_pathogenicity_bundle(host):
     print(f"  wrote {out_dir}/model.pt + classes.json + metrics.json")
 
 
+
+# --------------------------------------------------------------------------
+# 4. Phase 1 one-class screen, trained by
+#    ../new_analysis/phase12/train_phase1.py. That script owns the training;
+#    this only copies the finished bundle into the package.
+# --------------------------------------------------------------------------
+def copy_oneclass_bundle():
+    print("=== Copying phase-1 one-class screen ===")
+    import shutil
+
+    source_dir = os.path.join(NEW_ANALYSIS, "phase12", "models", "phase1")
+    out_dir = os.path.join(RESOURCES, "oneclass")
+    os.makedirs(out_dir, exist_ok=True)
+
+    wanted = ["phase1_oneclass_bilstm.pt", "phase1_metadata.json"]
+    missing = []
+    for filename in wanted:
+        source = os.path.join(source_dir, filename)
+        if not os.path.exists(source):
+            missing.append(os.path.relpath(source, GISAID_ROOT))
+            continue
+        shutil.copy2(source, os.path.join(out_dir, filename))
+        print(f"  copied {filename}")
+    if missing:
+        print("  WARNING: missing phase-1 artifacts, the screen will be unavailable:")
+        for item in missing:
+            print(f"    {item}")
+    return {"missing": missing}
+
+
+def remove_superseded_resources():
+    """Drop the pre-0.2.0 bundles so a rebuilt package cannot ship both the old
+    HA-vs-NA segment model and the eight-class gene model, or both one-class
+    gate generations."""
+    import shutil
+
+    print("=== Removing superseded pre-0.2.0 resources ===")
+    for relative in ("segment_model",):
+        path = os.path.join(RESOURCES, relative)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+            print(f"  removed {relative}/")
+    for relative in (
+        "oneclass/stage0_oneclass.joblib",
+        "oneclass/stage0_metadata.json",
+        "oneclass/stage1_oneclass_bilstm.pt",
+        "oneclass/stage1_metadata.json",
+    ):
+        path = os.path.join(RESOURCES, relative)
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"  removed {relative}")
+
+
 def main():
     device = get_device()
     print(f"device={device}\n")
 
-    segment_info = build_segment_classifier(device)
+    remove_superseded_resources()
+    gene_info = copy_gene_bundle()
 
     ha_classes = ['H1', 'H10', 'H11', 'H12', 'H13', 'H14', 'H15', 'H16',
                   'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9']
@@ -200,8 +260,10 @@ def main():
     for host in ("chicken", "duck"):
         copy_pathogenicity_bundle(host)
 
+    copy_oneclass_bundle()
+
     import hashlib
-    manifest = {"sha256": {}, "segment_model_held_out_accuracy": segment_info["held_out_accuracy"]}
+    manifest = {"sha256": {}, "gene_model_test_accuracy": gene_info["test_accuracy"]}
     for root, _, files in os.walk(RESOURCES):
         for fname in files:
             if fname in ("manifest.json",):

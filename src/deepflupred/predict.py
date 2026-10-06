@@ -1,19 +1,32 @@
 """deepFLUpred prediction pipeline.
 
-Three stages, run in order, each gating the next:
+Four phases, run in order, each gating the next:
 
-  1. identify_segment   -- is this sequence HA, NA, or neither?
-  2. predict_subtype    -- if HA/NA: which subtype (H1-H16 / N1-N9)?
-  3. predict_pathogenicity -- if HA: HPAI or LPAI, from the HA1/HA2
-     cleavage site (both a biological rule -- polybasic/monobasic motif --
-     and a per-host DNABERT+BiLSTM model, reported together)
+  1. AvianInfluenzaScreen.screen -- one-class: does this belong to any gene of
+     avian influenza A? Trained on all eight segments, positives only, so a
+     plant gene or a coronavirus is turned away before any classifier is
+     consulted rather than being forced into a gene call. See oneclass.py.
+  2. identify_gene       -- which gene is it? An eight-class choice across
+     PB2/PB1/PA/HA/NP/NA/MP/NS. For the six internal segments this is the
+     final answer: influenza subtyping is defined only for HA and NA.
+  3. predict_subtype     -- if HA or NA: which subtype (H1-H16 / N1-N9)?
+  4. predict_pathogenicity -- if HA: HPAI or LPAI, from the HA1/HA2 cleavage
+     site (both a biological rule -- polybasic/monobasic motif -- and a
+     per-host DNABERT+BiLSTM model, reported together).
 
-Every stage runs on DNABERT-2 embeddings (frozen encoder, adaptive-pooled to
-a fixed 16-step sequence) classified by a trained BiLSTM head -- see
-dnabert_bilstm.py. The segment and subtype stages both encode the full
-input sequence with an identical recipe, so that embedding is computed once
-per sequence and reused for both, rather than re-running the transformer
-twice.
+A phase-1 rejection says only that the sequence is unlike the avian influenza A
+sequences the screen was trained on; it cannot identify what the sequence
+actually is. Phase 1 also screens for influenza A genes rather than for host, so
+passing means "influenza A-like", not "confirmed avian origin".
+
+Every phase runs on DNABERT-2 embeddings (frozen encoder, adaptive-pooled to a
+fixed 16-step sequence) classified by a trained BiLSTM head -- see
+dnabert_bilstm.py. Phases 1, 2 and 3 all consume an identical encoding of the
+full input sequence, so that embedding is computed once per sequence and reused
+across all three rather than re-running the transformer three times. Phase 4
+encodes only the extracted 110nt cleavage-site window.
+
+Prediction is alignment-free: no BLAST, no pairwise identity.
 """
 from __future__ import annotations
 
@@ -25,14 +38,14 @@ import pandas as pd
 
 from deepflupred.cleavage_site import analyze_sequence
 from deepflupred.constants import (
-    HA_LENGTH_RANGE,
-    NA_LENGTH_RANGE,
+    GENE_LENGTH_RANGES,
     PATHOGENICITY_HOSTS,
+    SUBTYPEABLE_GENES,
 )
 from deepflupred.dnabert_bilstm import pooled_embed_sequences, predict_proba
 from deepflupred.model_store import ModelStore
 
-SEGMENT_CONFIDENCE_THRESHOLD = 0.75
+GENE_CONFIDENCE_THRESHOLD = 0.75
 SUBTYPE_CONFIDENCE_THRESHOLD = 0.50
 
 
@@ -66,31 +79,40 @@ def embed_one(seq: str, store: ModelStore) -> np.ndarray:
     return pooled_embed_sequences([seq], tok, model, store.device)[0]
 
 
-def identify_segment(embedding: np.ndarray, seq_len: int, store: ModelStore) -> dict:
-    bundle = store.load_segment_model()
+def identify_gene(embedding: np.ndarray, seq_len: int, store: ModelStore) -> dict:
+    """Phase 2: which of the eight influenza A genes is this?
+
+    A call is reported only when the top-class probability clears
+    GENE_CONFIDENCE_THRESHOLD. Length is recorded as a plausibility flag
+    against that gene's window but does not veto the call: the windows overlap
+    between genes, and a partial record is still worth a reported gene with a
+    flag rather than a refusal.
+    """
+    bundle = store.load_gene_model()
     classes = bundle["classes"]
 
     proba = predict_proba(bundle["model"], embedding, store.device)
-    top_idx = int(np.argmax(proba))
+    order = np.argsort(proba)[::-1]
+    top_idx = int(order[0])
     top_class, confidence = classes[top_idx], float(proba[top_idx])
+    runner_up = classes[int(order[1])] if len(order) > 1 else None
 
-    length_ok = (
-        (HA_LENGTH_RANGE[0] <= seq_len <= HA_LENGTH_RANGE[1])
-        if top_class == "HA"
-        else (NA_LENGTH_RANGE[0] <= seq_len <= NA_LENGTH_RANGE[1])
-    )
+    window = GENE_LENGTH_RANGES.get(top_class)
+    length_ok = bool(window and window[0] <= seq_len <= window[1])
 
-    resolved = confidence >= SEGMENT_CONFIDENCE_THRESHOLD and length_ok
     return {
-        "segment": top_class if resolved else None,
-        "segment_confidence": confidence,
-        "segment_length_plausible": length_ok,
-        "segment_probabilities": dict(zip(classes, (float(p) for p in proba))),
+        "gene": top_class if confidence >= GENE_CONFIDENCE_THRESHOLD else None,
+        "gene_top_class": top_class,
+        "gene_confidence": confidence,
+        "gene_runner_up": runner_up,
+        "gene_length_plausible": length_ok,
+        "gene_probabilities": dict(zip(classes, (float(p) for p in proba))),
     }
 
 
-def predict_subtype(embedding: np.ndarray, segment: str, store: ModelStore) -> dict:
-    bundle = store.load_subtype(segment)
+def predict_subtype(embedding: np.ndarray, gene: str, store: ModelStore) -> dict:
+    """Phase 3: HA -> H1-H16, NA -> N1-N9."""
+    bundle = store.load_subtype(gene)
     classes = bundle["classes"]
 
     proba = predict_proba(bundle["model"], embedding, store.device)
@@ -106,7 +128,7 @@ def predict_subtype(embedding: np.ndarray, segment: str, store: ModelStore) -> d
 
 
 def predict_pathogenicity(seq: str, store: ModelStore, hosts: list[str] | None = None) -> dict:
-    """Runs on a full-length HA nucleotide sequence: locates the HA1/HA2
+    """Phase 4, on a full-length HA nucleotide sequence: locates the HA1/HA2
     cleavage site, reports the rule-based Polybasic/Monobasic call, and
     (when the 110nt ML window is fully covered by the input) the per-host
     DNABERT+BiLSTM HPAI/LPAI prediction."""
@@ -159,39 +181,74 @@ def predict_sequence(
     seq: str,
     identifier: str,
     store: ModelStore,
-    expected_segment: str | None = None,
+    expected_gene: str | None = None,
     pathogenicity_hosts: list[str] | None = None,
+    run_screen: bool = True,
 ) -> dict:
     seq = seq.strip()
     row: dict = {"sequence_id": identifier, "sequence_length": len(seq)}
 
     embedding = embed_one(seq, store)
 
-    seg = identify_segment(embedding, len(seq), store)
-    row["segment"] = seg["segment"]
-    row["segment_confidence"] = round(seg["segment_confidence"], 4)
+    # -- phase 1: is this any gene of avian influenza A? ----------------------
+    if run_screen:
+        verdict = store.screen.screen(embedding)
+        if verdict is not None:
+            row.update(verdict.as_row("avian_influenza"))
+            if not verdict.accepted:
+                row["status"] = "not_avian_influenza"
+                row["explanation"] = (
+                    "Rejected by the phase-1 avian influenza A one-class screen "
+                    f"(score={verdict.score:.4f} below threshold {verdict.threshold:.4f}). "
+                    "The sequence is unlike any of the eight avian influenza A genes the "
+                    "screen was trained on; no gene or subtype was assigned."
+                )
+                return row
 
-    if seg["segment"] is None:
-        row["status"] = "segment_unresolved"
+    # -- phase 2: which gene? -------------------------------------------------
+    gene_call = identify_gene(embedding, len(seq), store)
+    row["gene"] = gene_call["gene"]
+    row["gene_confidence"] = round(gene_call["gene_confidence"], 4)
+    row["gene_length_plausible"] = gene_call["gene_length_plausible"]
+
+    if gene_call["gene"] is None:
+        row["status"] = "gene_unresolved"
         row["explanation"] = (
-            "Not confidently identified as HA or NA "
-            f"(top-class confidence={seg['segment_confidence']:.3f}, "
-            f"length={row['sequence_length']}bp)."
+            "Passed the phase-1 screen but no gene was identified with sufficient confidence "
+            f"(best guess {gene_call['gene_top_class']} at "
+            f"{gene_call['gene_confidence']:.3f}, below the "
+            f"{GENE_CONFIDENCE_THRESHOLD:.2f} floor; runner-up "
+            f"{gene_call['gene_runner_up']}, length={row['sequence_length']}bp)."
         )
         return row
 
-    if expected_segment and seg["segment"] != expected_segment.upper():
-        row["status"] = "expected_segment_mismatch"
+    gene = gene_call["gene"]
+    if expected_gene and gene != expected_gene.upper():
+        row["status"] = "expected_gene_mismatch"
         row["explanation"] = (
-            f"Expected {expected_segment.upper()} but classified as {seg['segment']} "
-            f"(confidence={seg['segment_confidence']:.3f})."
+            f"Expected {expected_gene.upper()} but classified as {gene} "
+            f"(confidence={gene_call['gene_confidence']:.3f})."
         )
 
-    subtype = predict_subtype(embedding, seg["segment"], store)
+    # The six internal segments are a complete answer: subtyping is defined
+    # only for HA and NA, so the pipeline stops here rather than inventing one.
+    if gene not in SUBTYPEABLE_GENES:
+        if "status" not in row:
+            row["status"] = "gene_identified"
+            row["explanation"] = (
+                f"Identified as {gene} (confidence={gene_call['gene_confidence']:.3f}). "
+                "Subtype and pathogenicity are defined only for HA and NA, so no further "
+                "phase was run."
+            )
+        return row
+
+    # -- phase 3: subtype -----------------------------------------------------
+    subtype = predict_subtype(embedding, gene, store)
     row["subtype"] = subtype["subtype"]
     row["subtype_confidence"] = round(subtype["subtype_confidence"], 4)
 
-    if seg["segment"] == "HA":
+    # -- phase 4: pathogenicity (HA only) -------------------------------------
+    if gene == "HA":
         path = predict_pathogenicity(seq, store, hosts=pathogenicity_hosts)
         row["cleavage_site_resolved"] = path["cleavage_site_resolved"]
         row["cleavage_site_classification"] = path["cleavage_site_classification"]
@@ -201,10 +258,10 @@ def predict_sequence(
     if "status" not in row:
         row["status"] = "subtype_assigned"
         explanation = (
-            f"Identified as {seg['segment']} (confidence={seg['segment_confidence']:.3f}); "
+            f"Identified as {gene} (confidence={gene_call['gene_confidence']:.3f}); "
             f"subtype {subtype['subtype']} (confidence={subtype['subtype_confidence']:.3f})."
         )
-        if seg["segment"] == "HA":
+        if gene == "HA":
             if row.get("cleavage_site_resolved"):
                 explanation += (
                     f" Cleavage site: {row['cleavage_site_classification']}"
@@ -222,20 +279,23 @@ def predict_sequence(
 def predict_sequences(
     sequences: list[str],
     identifiers: list[str] | None = None,
-    expected_segment: str | None = None,
+    expected_gene: str | None = None,
     pathogenicity_hosts: list[str] | None = None,
-    segment_model: str | Path | None = None,
+    gene_model: str | Path | None = None,
     subtype_model_dir: str | Path | None = None,
     pathogenicity_model_dir: str | Path | None = None,
+    oneclass_model_dir: str | Path | None = None,
+    run_screen: bool = True,
 ) -> pd.DataFrame:
     store = ModelStore(
-        segment_model=segment_model,
+        gene_model=gene_model,
         subtype_model_dir=subtype_model_dir,
         pathogenicity_model_dir=pathogenicity_model_dir,
+        oneclass_model_dir=oneclass_model_dir,
     )
     identifiers = identifiers or [f"seq{i+1}" for i in range(len(sequences))]
     rows = [
-        predict_sequence(seq, ident, store, expected_segment, pathogenicity_hosts)
+        predict_sequence(seq, ident, store, expected_gene, pathogenicity_hosts, run_screen)
         for ident, seq in zip(identifiers, sequences)
     ]
     return pd.DataFrame(rows)
@@ -244,11 +304,13 @@ def predict_sequences(
 def predict_fasta(
     fasta_path,
     output=None,
-    expected_segment: str | None = None,
+    expected_gene: str | None = None,
     pathogenicity_hosts: list[str] | None = None,
-    segment_model: str | Path | None = None,
+    gene_model: str | Path | None = None,
     subtype_model_dir: str | Path | None = None,
     pathogenicity_model_dir: str | Path | None = None,
+    oneclass_model_dir: str | Path | None = None,
+    run_screen: bool = True,
 ) -> pd.DataFrame:
     records = parse_fasta(fasta_path)
     headers = [h for h, _ in records]
@@ -260,11 +322,13 @@ def predict_fasta(
     table = predict_sequences(
         seqs,
         identifiers=ids,
-        expected_segment=expected_segment,
+        expected_gene=expected_gene,
         pathogenicity_hosts=pathogenicity_hosts,
-        segment_model=segment_model,
+        gene_model=gene_model,
         subtype_model_dir=subtype_model_dir,
         pathogenicity_model_dir=pathogenicity_model_dir,
+        oneclass_model_dir=oneclass_model_dir,
+        run_screen=run_screen,
     )
     if output:
         os.makedirs(os.path.dirname(str(output)) or ".", exist_ok=True)

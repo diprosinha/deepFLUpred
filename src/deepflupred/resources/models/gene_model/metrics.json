@@ -1,0 +1,187 @@
+{
+  "phase": "phase2_gene_identification",
+  "task": "8-class segment identification: which gene of influenza A is this?",
+  "classes": [
+    "PB2",
+    "PB1",
+    "PA",
+    "HA",
+    "NP",
+    "NA",
+    "MP",
+    "NS"
+  ],
+  "architecture": "frozen DNABERT-2 pooled embeddings (16x768) -> BiLSTM classifier",
+  "hidden": 64,
+  "split": {
+    "train": 38018,
+    "validation": 4225,
+    "test": 4695,
+    "cluster_disjoint": true,
+    "cdhit_identity": 0.99
+  },
+  "test_accuracy": 1.0,
+  "test_macro_f1": 1.0,
+  "per_class": {
+    "PB2": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 611.0
+    },
+    "PB1": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 601.0
+    },
+    "PA": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 559.0
+    },
+    "HA": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 800.0
+    },
+    "NP": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 538.0
+    },
+    "NA": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 726.0
+    },
+    "MP": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 394.0
+    },
+    "NS": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 466.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      611,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      601,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      559,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      800,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      538,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      726,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      394,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      466
+    ]
+  ],
+  "confidence_coverage": [
+    {
+      "confidence_floor": 0.5,
+      "coverage": 1.0,
+      "accuracy_on_covered": 1.0
+    },
+    {
+      "confidence_floor": 0.6,
+      "coverage": 1.0,
+      "accuracy_on_covered": 1.0
+    },
+    {
+      "confidence_floor": 0.75,
+      "coverage": 1.0,
+      "accuracy_on_covered": 1.0
+    },
+    {
+      "confidence_floor": 0.9,
+      "coverage": 0.999787007454739,
+      "accuracy_on_covered": 1.0
+    },
+    {
+      "confidence_floor": 0.95,
+      "coverage": 0.9993610223642172,
+      "accuracy_on_covered": 1.0
+    }
+  ],
+  "class_weighted_loss": true,
+  "training_time_sec": 42.508493185043335,
+  "epochs_best_validation_accuracy": 1.0
+}

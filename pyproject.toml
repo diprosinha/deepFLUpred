@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "deepflupred"
-version = "0.1.0"
+version = "0.2.0"
 description = "A deep learning-based framework for genomic characterization, subtyping, and pathogenicity prediction of avian influenza viruses"
 readme = "README.md"
 authors = [
@@ -30,6 +30,8 @@ dependencies = [
   "numpy>=1.26",
   "pandas>=2.0",
   "torch>=2.5",
+  "scikit-learn>=1.3",
+  "joblib>=1.3",
   "transformers==4.29.2",
   "einops",
 ]

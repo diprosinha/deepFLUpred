@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from deepflupred import __version__
-from deepflupred.constants import PATHOGENICITY_HOSTS, SEGMENTS
+from deepflupred.constants import GENES, PATHOGENICITY_HOSTS
 from deepflupred.model_store import ModelStore
 from deepflupred.predict import predict_fasta
 
@@ -17,8 +17,9 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "deepFLUpred: a deep learning-based framework for genomic characterization, "
             "subtyping, and pathogenicity prediction of avian influenza viruses. "
-            "Identifies HA/NA segments, predicts HA (H1-H16) / NA (N1-N9) subtype, "
-            "and -- for HA -- predicts HPAI/LPAI pathogenicity from the HA1/HA2 "
+            "Screens a sequence against avian influenza A, identifies which of the eight "
+            "genes it is (PB2/PB1/PA/HA/NP/NA/MP/NS), predicts HA (H1-H16) / NA (N1-N9) "
+            "subtype, and -- for HA -- predicts HPAI/LPAI pathogenicity from the HA1/HA2 "
             "cleavage site."
         ),
     )
@@ -33,9 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--output", "-o", type=Path, required=True, help="CSV file for results"
     )
     predict.add_argument(
-        "--expected-segment",
-        choices=SEGMENTS,
-        help="Expected segment, when known; a different assignment is flagged",
+        "--expected-gene",
+        choices=GENES,
+        help="Expected gene, when known; a different assignment is flagged, not rejected",
     )
     predict.add_argument(
         "--pathogenicity-host",
@@ -45,7 +46,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Restrict HPAI/LPAI prediction to this host's model "
         "(repeatable; default: run all supported hosts and report a consensus)",
     )
-    predict.add_argument("--segment-model", type=Path, help="Alternative segment-ID model")
+    predict.add_argument("--gene-model", type=Path, help="Alternative phase-2 gene-ID model")
+    predict.add_argument(
+        "--oneclass-model-dir", type=Path, help="Directory with an alternative phase-1 screen"
+    )
+    predict.add_argument(
+        "--no-screen",
+        action="store_true",
+        help="Skip the phase-1 screen and classify every sequence (diagnostic use: "
+        "without the screen, a non-influenza input is still forced into a gene call)",
+    )
     predict.add_argument(
         "--subtype-model-dir", type=Path, help="Directory with alternative HA/NA subtype models"
     )
@@ -84,18 +94,23 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"{row['model']}\t{row['task']}")
                 m = row.get("test_metrics")
                 if m:
-                    parts = [f"{k}={v:.4f}" for k, v in m.items()]
+                    parts = [
+                        f"{key}={value:.4f}" if isinstance(value, (int, float)) else f"{key}={value}"
+                        for key, value in m.items()
+                    ]
                     print("  " + "  ".join(parts))
         return
 
     table = predict_fasta(
         args.fasta,
         args.output,
-        expected_segment=args.expected_segment,
+        expected_gene=args.expected_gene,
         pathogenicity_hosts=args.pathogenicity_hosts,
-        segment_model=args.segment_model,
+        gene_model=args.gene_model,
         subtype_model_dir=args.subtype_model_dir,
         pathogenicity_model_dir=args.pathogenicity_model_dir,
+        oneclass_model_dir=args.oneclass_model_dir,
+        run_screen=not args.no_screen,
     )
     if not args.quiet:
         for _, result in table.iterrows():
